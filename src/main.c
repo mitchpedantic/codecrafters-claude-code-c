@@ -40,6 +40,29 @@ int main(int argc, char *argv[]) {
 
     cJSON *req = cJSON_CreateObject();
     cJSON_AddStringToObject(req, "model", "anthropic/claude-haiku-4.5");
+    
+    // tools
+    cJSON *tools = cJSON_AddArrayToObject(req, "tools");
+    cJSON *tool = cJSON_CreateObject();
+    cJSON_AddStringToObject(tool, "type", "function");
+    cJSON *function = cJSON_CreateObject();
+    cJSON_AddStringToObject(function, "name", "Read");
+    cJSON_AddStringToObject(function, "description", "Read and return the contents of a file");
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "type", "object");
+    cJSON *properties = cJSON_CreateObject();
+    cJSON *filepath = cJSON_CreateObject();
+    cJSON_AddStringToObject(filepath, "type", "string");
+    cJSON_AddStringToObject(filepath, "description", "The path to the file to read");
+    cJSON_AddItemToObject(properties, "file_path", filepath);
+    cJSON *requirements = cJSON_AddArrayToObject(params, "required");
+    cJSON_AddItemToArray(requirements, cJSON_CreateString("file_path"));
+    cJSON_AddItemToObject(params, "properties", properties);
+    cJSON_AddItemToObject(function, "parameters", params);
+    cJSON_AddItemToObject(tool, "function", function);
+    cJSON_AddItemToArray(tools, tool);
+
+    // messages
     cJSON *messages = cJSON_AddArrayToObject(req, "messages");
     cJSON *msg = cJSON_CreateObject();
     cJSON_AddStringToObject(msg, "role", "user");
