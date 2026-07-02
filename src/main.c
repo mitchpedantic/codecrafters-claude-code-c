@@ -22,6 +22,32 @@ static size_t curl_write_response(void *contents, size_t size, size_t nmemb, voi
     return total;
 }
 
+static int read_function(char* source) {
+    static char file[4096U];
+    (void *)memset(file, '\0', 4096U);
+    char *token = strtok(source, "\"");
+    // skip first match (start of the word! which is '{')
+    while (token = strtok(NULL, "\""), token) {
+        if (0 == strncmp(token, "file_path", sizeof("file_path"))) {
+            token = strtok(NULL, ": \"");
+            for (int i = 0U; token[i] != '\"'; i++)
+                file[i] = token[i];
+            break;
+        }
+        token = strtok(NULL, "\"");
+    }
+    if (file) {
+        FILE *fp = fopen(file,"r");
+        char c = 0;
+        while (c = fgetc(fp), EOF != c) {
+            putc(c, stdout);
+        }
+        fclose(fp);
+    }
+
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     const char *prompt = NULL;
     if (getopt(argc, argv, "p:") == 'p') prompt = optarg;
@@ -111,22 +137,50 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    int n_choice = 0;
     cJSON *choices = cJSON_GetObjectItem(json, "choices");
-    if (!cJSON_IsArray(choices) || cJSON_GetArraySize(choices) == 0) {
+    if (!cJSON_IsArray(choices) || (n_choice = cJSON_GetArraySize(choices), n_choice == 0)) {
         fprintf(stderr, "no choices in response\n");
         cJSON_Delete(json);
         return 1;
     }
-
-    cJSON *first = cJSON_GetArrayItem(choices, 0);
-    cJSON *message = cJSON_GetObjectItem(first, "message");
-    cJSON *content = cJSON_GetObjectItem(message, "content");
-
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    fprintf(stderr, "Logs from your program will appear here!\n");
-
-    // TODO: Uncomment the line below to pass the first stage
-    printf("%s", cJSON_GetStringValue(content));
+    
+    for (int i = 0; i < n_choice; i++) {
+        cJSON *first = cJSON_GetArrayItem(choices, i);
+        cJSON *message = cJSON_GetObjectItem(first, "message");
+        cJSON *content = cJSON_GetObjectItem(message, "content");
+        cJSON *tool_calls = cJSON_GetObjectItem(message, "tool_calls");
+        //
+        // You can use print statements as follows for debugging, they'll be visible when running tests.
+        // fprintf(stderr, "Logs from your program will appear here!\n");
+        //
+        // pass test task 1
+        if (cJSON_GetStringValue(content))
+            // TODO: Uncomment the line below to pass the first stage
+            printf("%s", cJSON_GetStringValue(content));
+        // pass test task 2
+        int n_calls = 0;
+        if (!cJSON_IsArray(tool_calls) || (n_calls = cJSON_GetArraySize(tool_calls), n_calls == 0))
+            continue;
+        for (int j = 0; j < n_calls; j++) {
+            cJSON *call = cJSON_GetArrayItem(tool_calls, j);
+            cJSON *function = cJSON_GetObjectItem(call, "function");
+            //
+            cJSON *name = cJSON_GetObjectItem(function, "name");
+            if (cJSON_IsString(name) && (name->valuestring != NULL)) {
+                if (0 == strcmp(name->valuestring, "Read")) {
+                    cJSON *name = cJSON_GetObjectItem(function, "name");
+                    if (cJSON_IsString(name) && (name->valuestring != NULL)) {
+                        cJSON *arguments = cJSON_GetObjectItem(function, "arguments");
+                        cJSON_IsString(arguments) && \
+                        (arguments->valuestring != NULL) && \
+                        read_function(arguments->valuestring);
+                    }
+                }
+            }
+            
+        }
+    }
 
     cJSON_Delete(json);
     return 0;
