@@ -48,7 +48,38 @@ static int read_function(char* source) {
     return 0;
 }
 
-int main(int argc, char *argv[]) {
+static size_t occupied = 0U;
+static size_t allocation = 4U;
+static cJSON* *context_addr = NULL;
+
+static void
+init_context() {
+    context_addr = calloc(allocation, sizeof(JSON *));
+}
+
+
+static const void*
+grow_context(const cJSON* item) {
+    if (occupied == allocation) {
+        static cJSON* *previous_addr = NULL;
+        allocation *= 2:
+        if (!(context_addr = realloc(previous_addr = context_addr, allocation))) {
+            free(previous_addr);
+        }
+    }
+    
+    if 
+
+    context_addr[occupied++] = item;
+}
+
+static void
+free_context() {
+
+}
+
+int
+main(int argc, char *argv[]) {
     const char *prompt = NULL;
     if (getopt(argc, argv, "p:") == 'p') prompt = optarg;
     if (!prompt) {
@@ -178,7 +209,6 @@ int main(int argc, char *argv[]) {
                     }
                 }
             }
-            
         }
     }
 
