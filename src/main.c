@@ -89,6 +89,7 @@ read_function(char* source, char **tool_result) {
             fclose(fd);
             return FILE_ERROR;
         }
+        (*tool_result)[read] = '\0';
         //char c = 0;
         //while (c = fgetc(fp), EOF != c) {
             //    putc(c, stdout);
