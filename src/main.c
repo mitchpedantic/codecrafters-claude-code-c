@@ -246,6 +246,7 @@ handle_choice(cJSON *choice) {
 
 static int
 loop(void) {
+    fprintf(stderr, cJSON_Print(conversation));
     int returncode = SUCCESS;
     cJSON *api_reply = NULL;
     if (returncode = wrap_API_call(&api_reply)) {
