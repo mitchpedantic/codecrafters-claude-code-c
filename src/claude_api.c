@@ -31,6 +31,10 @@ static const char *base_url = NULL;
 /************************************
  * STATIC FUNCTION PROTOTYPES
  ************************************/
+/*!
+ * @brief utility callback for curl_easy_setopt with CURLOPT_WRITEFUNCTION parameter.
+ * The function handles the copy of data received by curl API.
+ */
 static size_t curl_write_response(void *contents, size_t size, size_t nmemb, void *userp);
 
 /************************************
