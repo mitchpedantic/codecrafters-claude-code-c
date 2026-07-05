@@ -37,11 +37,33 @@ static cJSON* create_read(void);
  * @brief utility function that handles the creation of the Write tool
  */
 static cJSON* create_write(void);
-
+/*!
+ * @brief utility function that handles the creation of the Bash tool
+ */
+static cJSON* create_bash(void);
+/*!
+ * @brief utility function that wraps the ftell function to handle error graciously
+ */
 static long wrap_ftell(FILE* fd);
+/*!
+ * @brief utility function that copies the content in a newly allocated memory space
+ */
 static internal_codes_e copy_file(FILE* fd, long fsize, char** tool_result);
+/*!
+ * @brief utility function that handles calls to read tool
+ */
 static internal_codes_e handle_read(cJSON* arguments, char** tool_result);
+/*!
+ * @brief utility function that handles calls to write tool
+ */
 static internal_codes_e handle_write(cJSON* arguments, char** tool_result);
+/*!
+ * @brief utility function that handles calls to bash tool
+ */
+static internal_codes_e handle_bash(cJSON* arguments, char** tool_result);
+/*!
+ * @brief utility function that handles the selection of tools
+ */
 static internal_codes_e select_tool(cJSON* function, cJSON* report);
 /************************************
  * STATIC FUNCTIONS
@@ -118,6 +140,38 @@ create_write(void) {
     return tool;
 }
 
+static cJSON*
+create_bash(void) {
+    cJSON* tool = cJSON_CreateObject();
+    cJSON_AddStringToObject(tool, "type", "function");
+    {
+        cJSON* function = cJSON_CreateObject();
+        cJSON_AddStringToObject(function, "name", "Bash");
+        cJSON_AddStringToObject(function, "description", "Execute a shell command");
+        {
+            cJSON* params = cJSON_CreateObject();
+            cJSON_AddStringToObject(params, "type", "object");
+            {
+                cJSON* requirements = cJSON_AddArrayToObject(params, "required");
+                cJSON_AddItemToArray(requirements, cJSON_CreateString("command"));
+            }
+            {
+                cJSON* properties = cJSON_CreateObject();
+                {
+                    cJSON* filepath = cJSON_CreateObject();
+                    cJSON_AddStringToObject(filepath, "type", "string");
+                    cJSON_AddStringToObject(filepath, "description", "The command to execute");
+                    cJSON_AddItemToObject(properties, "command", filepath);
+                }
+                cJSON_AddItemToObject(params, "properties", properties);
+            }
+            cJSON_AddItemToObject(function, "parameters", params);
+        }
+        cJSON_AddItemToObject(tool, "function", function);
+    }
+    return tool;
+}
+
 static long
 wrap_ftell(FILE* fd) {
     long fsize = 0;
@@ -156,7 +210,7 @@ handle_read(cJSON* arguments, char** tool_result) {
     internal_codes_e returncode = tool_success;
     
     cJSON* file_path = cJSON_GetObjectItem(arguments, "file_path");
-    if (!cJSON_IsString(file_path) || (file_path->valuestring == NULL)) {
+    if (!cJSON_IsString(file_path) || (!file_path->valuestring)) {
         fprintf(stderr, "\"file_path\" is not a string\n");
         return invalid_error;
     }
@@ -180,13 +234,13 @@ handle_write(cJSON* arguments, char** tool_result) {
     internal_codes_e returncode = tool_success;
     
     cJSON* file_path = cJSON_GetObjectItem(arguments, "file_path");
-    if (!cJSON_IsString(file_path) || (file_path->valuestring == NULL)) {
+    if (!cJSON_IsString(file_path) || (!file_path->valuestring)) {
         fprintf(stderr, "\"file_path\" is not a string\n");
         return invalid_error;
     }
     
     cJSON* content = cJSON_GetObjectItem(arguments, "content");
-    if (!cJSON_IsString(content) || (content->valuestring == NULL)) {
+    if (!cJSON_IsString(content) || (!content->valuestring)) {
         fprintf(stderr, "\"content\" is not a string\n");
         return invalid_error;
     }
@@ -201,12 +255,55 @@ handle_write(cJSON* arguments, char** tool_result) {
 }
 
 static internal_codes_e
+handle_bash(cJSON* arguments, char** tool_result) {
+    char output[1035];
+    size_t current_size = 0;
+    size_t allocation = 1035;
+
+    cJSON* command = cJSON_GetObjectItem(arguments, "command");
+    if (!cJSON_IsString(command) || (!command->valuestring)) {
+        fprintf(stderr, "\"command\" is not a string\n");
+        return invalid_error;
+    }
+    
+    *tool_result = malloc(allocation);
+    if (!tool_result) {
+        fprintf(stderr, "malloc failed\n");
+        return nullmem_error;
+    }
+    
+    FILE *process_pipe = popen(command->valuestring, "r");
+    if (!process_pipe) {
+      fprintf(stderr, "%s : process cannot be created.\n", command->valuestring);
+      return file_error;
+    }
+    
+    while (fgets(output, sizeof(output), process_pipe) != NULL) {
+        size_t addlen = strlen(output);
+        memcpy((*tool_result) + current_size, output, addlen);
+        current_size += addlen;
+        if ((current_size * 2) >= allocation) {
+            char *tmp = NULL;
+            allocation *= 2;
+            *tool_result = realloc(tmp = *tool_result, allocation);
+            if (!*tool_result) {
+                free(tmp);
+                return nullmem_error;
+            }
+        }
+    }
+    (*tool_result)[current_size] = '\0';
+
+    pclose(process_pipe);
+}
+
+static internal_codes_e
 select_tool(cJSON* function, cJSON* report) {
     internal_codes_e returncode = tool_success;
     internal_codes_e (*handler)(cJSON *, char **);
 
     cJSON* name = cJSON_GetObjectItem(function, "name");
-    if (!cJSON_IsString(name) || (name->valuestring == NULL)) {
+    if (!cJSON_IsString(name) || (!name->valuestring)) {
         fprintf(stderr, "\"name\" is not a string\n");
         return invalid_error;
     }
@@ -217,6 +314,9 @@ select_tool(cJSON* function, cJSON* report) {
     else if (0 == strcmp(name->valuestring, "Write")) {
         handler = handle_write;
     }
+    else if (0 == strcmp(name->valuestring, "Bash")) {
+        handler = handle_bash;
+    }
     else {
         fprintf(stderr, "%s is not a valid tool\n", name->valuestring);
         return invalid_error;
@@ -226,7 +326,7 @@ select_tool(cJSON* function, cJSON* report) {
     cJSON* arguments = NULL;
     {
         cJSON* tmp = cJSON_GetObjectItem(function, "arguments");
-        if (!cJSON_IsString(tmp) || (tmp->valuestring == NULL)) {
+        if (!cJSON_IsString(tmp) || (!tmp->valuestring)) {
             fprintf(stderr, "\"arguments\" is incomplete\n");
             return invalid_error;
         }
@@ -235,12 +335,13 @@ select_tool(cJSON* function, cJSON* report) {
     returncode = handler(arguments, &tool_result);
     if (returncode) {
         fprintf(stderr, "%s tool failed.\n", name->valuestring);
-        if ((returncode != nullmem_error) && (tool_result != NULL)) free(tool_result);
+        if ((returncode != nullmem_error) && tool_result) free(tool_result);
         return returncode;
     }
     
     cJSON_AddStringToObject(report, "content", tool_result);
-    free(tool_result);
+    if (tool_result)
+        free(tool_result);
 
     return tool_success;
 }
@@ -253,6 +354,7 @@ init_tools(void) {
     cJSON* tools = cJSON_CreateArray();
     cJSON_AddItemToArray(tools, create_read());
     cJSON_AddItemToArray(tools, create_write());
+    cJSON_AddItemToArray(tools, create_bash());
     return tools;
 }
 
